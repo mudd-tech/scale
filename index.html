@@ -1,0 +1,1828 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام الميزان الذهبي لإدارة البسكول | Smart Weighbridge POS</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Cairo & Share Tech Mono for LED Display -->
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Cairo', 'sans-serif'],
+                        mono: ['Share Tech Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            font-family: 'Cairo', sans-serif;
+            background-color: #070b14;
+            color: #e2e8f0;
+            overflow-x: hidden;
+        }
+        /* LED Digital Weighbridge Indicator Styling */
+        .led-screen {
+            background: radial-gradient(circle at center, #051c14 0%, #020b08 100%);
+            border: 3px solid #1e293b;
+            box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.9), 0 0 20px rgba(16, 185, 129, 0.15);
+        }
+        .led-digits {
+            font-family: 'Share Tech Mono', monospace;
+            text-shadow: 0 0 18px rgba(16, 185, 129, 0.85), 0 0 35px rgba(16, 185, 129, 0.4);
+            letter-spacing: 0.06em;
+        }
+        .led-digits-unstable {
+            font-family: 'Share Tech Mono', monospace;
+            text-shadow: 0 0 18px rgba(245, 158, 11, 0.85), 0 0 35px rgba(245, 158, 11, 0.4);
+            letter-spacing: 0.06em;
+        }
+        .glass-card {
+            background: rgba(15, 23, 42, 0.78);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(51, 65, 85, 0.65);
+        }
+        /* Egyptian License Plate Styling */
+        .egypt-plate {
+            background: linear-gradient(180deg, #1d4ed8 0%, #1e40af 38%, #ffffff 38%, #f8fafc 100%);
+            border: 2px solid #1e293b;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 7px;
+            height: 7px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #090f1d;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1e293b;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #10b981;
+        }
+        /* Print Styles: Print ONLY the Official Ticket cleanly */
+        @media print {
+            body {
+                background: #ffffff !important;
+                color: #000000 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+            #ticketPrintContainer {
+                display: block !important;
+                position: static !important;
+                width: 100% !important;
+                background: #ffffff !important;
+            }
+            .ticket-paper {
+                box-shadow: none !important;
+                border: 2px solid #000000 !important;
+                max-width: 100% !important;
+                width: 100% !important;
+                margin: 0 auto !important;
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-emerald-500 selection:text-slate-950">
+
+    <!-- TOP HEADER BAR -->
+    <header class="glass-card sticky top-0 z-30 border-b border-slate-800 px-4 py-2.5 no-print">
+        <div class="max-w-[1650px] mx-auto flex flex-wrap items-center justify-between gap-3">
+            <!-- Brand & Scale Identity -->
+            <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                    <i class="fa-solid fa-truck-moving text-slate-950 text-xl"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 id="hdrCompanyName" class="text-lg sm:text-xl font-black text-white">ميزان بسكول النور الحديث (120 طن)</h1>
+                        <span class="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">إصدار المحترفين v4.0</span>
+                    </div>
+                    <p id="hdrCompanyAddress" class="text-xs text-slate-400">طريق مصر إسكندرية الزراعي • معتمد ومراقب بالكمبيوتر والكاميرات</p>
+                </div>
+            </div>
+
+            <!-- Live Daily KPIs -->
+            <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+                <div class="bg-slate-900/90 border border-slate-700/70 rounded-xl px-3 py-1.5 flex items-center gap-2">
+                    <i class="fa-solid fa-clock-rotate-left text-amber-400"></i>
+                    <div>
+                        <div class="text-[10px] text-slate-400">سيارات بالداخل (انتظار)</div>
+                        <div class="text-xs sm:text-sm font-black text-amber-400"><span id="kpiPendingCount">0</span> سيارة</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900/90 border border-slate-700/70 rounded-xl px-3 py-1.5 flex items-center gap-2">
+                    <i class="fa-solid fa-check-double text-cyan-400"></i>
+                    <div>
+                        <div class="text-[10px] text-slate-400">كارتات مكتملة</div>
+                        <div class="text-xs sm:text-sm font-black text-white"><span id="kpiCompletedCount">0</span> وزنة</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900/90 border border-slate-700/70 rounded-xl px-3 py-1.5 flex items-center gap-2">
+                    <i class="fa-solid fa-weight-hanging text-purple-400"></i>
+                    <div>
+                        <div class="text-[10px] text-slate-400">إجمالي الصافي الموزون</div>
+                        <div class="text-xs sm:text-sm font-black text-purple-300"><span id="kpiTotalTons">0</span> طن</div>
+                    </div>
+                </div>
+
+                <div class="bg-emerald-950/60 border border-emerald-500/40 rounded-xl px-3.5 py-1.5 flex items-center gap-2">
+                    <i class="fa-solid fa-cash-register text-emerald-400"></i>
+                    <div>
+                        <div class="text-[10px] text-emerald-300">إيراد الكارتة اليوم</div>
+                        <div class="text-sm font-black text-emerald-400"><span id="kpiScaleRevenue">0</span> <span class="curr-lbl text-[11px]">ج.م</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings & Backup Actions -->
+            <div class="flex items-center gap-2">
+                <button onclick="openSettingsModal()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600/70 text-xs font-bold flex items-center gap-1.5 transition">
+                    <i class="fa-solid fa-gear text-emerald-400"></i>
+                    <span>إعدادات الميزان والشركة</span>
+                </button>
+                <button onclick="exportExcelCSV()" class="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold flex items-center gap-1.5 shadow-lg shadow-emerald-600/20 transition">
+                    <i class="fa-solid fa-file-excel"></i>
+                    <span class="hidden md:inline">تصدير شيت Excel</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT GRID -->
+    <main class="flex-1 max-w-[1650px] w-full mx-auto p-3 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 no-print">
+
+        <!-- RIGHT COLUMN: DIGITAL WEIGHBRIDGE INDICATOR & TRUCK GRAPHIC (4 Columns) -->
+        <aside class="lg:col-span-4 space-y-4">
+
+            <!-- 1. DIGITAL WEIGHBRIDGE HEAD UNIT (رأس الميزان الديجيتال) -->
+            <div class="glass-card rounded-2xl p-4 border-2 border-slate-700/80 shadow-2xl">
+                <div class="flex items-center justify-between mb-2.5">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+                        <h2 class="text-xs font-black tracking-wide text-slate-300 uppercase">قراءة رأس الميزان اللحظية (MODEL XK3190-A9)</h2>
+                    </div>
+                    <span id="serialStatusBadge" class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-800 text-amber-300 border border-amber-500/30">
+                        وضع المحاكاة الذكي
+                    </span>
+                </div>
+
+                <!-- LED Screen Box -->
+                <div class="led-screen rounded-2xl p-4 relative overflow-hidden">
+                    <!-- Top Status Indicators inside LED -->
+                    <div class="flex items-center justify-between text-[11px] font-bold mb-2 pb-1.5 border-b border-emerald-950/80">
+                        <div class="flex items-center gap-3">
+                            <span id="indStable" class="flex items-center gap-1 text-emerald-400">
+                                <i class="fa-solid fa-circle text-[8px]"></i> مستقر STABLE
+                            </span>
+                            <span id="indZero" class="flex items-center gap-1 text-slate-600">
+                                <i class="fa-solid fa-circle text-[8px]"></i> صفر ZERO
+                            </span>
+                        </div>
+                        <div class="text-emerald-400/80 font-mono text-xs" id="liveClockDisplay">--:--:--</div>
+                    </div>
+
+                    <!-- Giant Weight Reading in KG -->
+                    <div class="flex items-baseline justify-end gap-2 my-1">
+                        <div id="ledWeightKG" class="led-digits text-5xl sm:text-6xl font-black text-emerald-400 tracking-wider select-all">
+                            00000
+                        </div>
+                        <div class="text-right">
+                            <div class="text-sm font-black text-emerald-300">كجم</div>
+                            <div class="text-[10px] font-mono text-emerald-500">KG</div>
+                        </div>
+                    </div>
+
+                    <!-- Converted Tons & Load Bar -->
+                    <div class="mt-3 pt-2 border-t border-emerald-950/90 flex items-center justify-between text-xs">
+                        <div class="text-slate-400">
+                            الوزن بالطن: <span id="ledWeightTons" class="font-mono font-bold text-cyan-400 text-base">0.000</span> <span class="text-cyan-500">طن</span>
+                        </div>
+                        <div class="text-slate-400">
+                            الحمولة القصوى: <span class="font-bold text-slate-300">120 طن</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Indicator Hardware Buttons (Zero, Stabilize, Serial Connect) -->
+                <div class="grid grid-cols-3 gap-2 mt-3">
+                    <button onclick="zeroScale()" class="py-2 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-extrabold text-white flex items-center justify-center gap-1.5 transition active:scale-95">
+                        <i class="fa-solid fa-arrows-to-dot text-cyan-400"></i>
+                        <span>تصفير ZERO</span>
+                    </button>
+                    <button onclick="toggleStability()" class="py-2 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-extrabold text-white flex items-center justify-center gap-1.5 transition active:scale-95">
+                        <i class="fa-solid fa-lock text-emerald-400"></i>
+                        <span>تثبيت القراءة</span>
+                    </button>
+                    <button onclick="connectRealSerialScale()" id="btnSerialConnect" class="py-2 px-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-xs font-extrabold text-cyan-300 flex items-center justify-center gap-1.5 transition active:scale-95" title="ربط كابل RS232/USB الحقيقي برأس الميزان">
+                        <i class="fa-solid fa-plug-circle-bolt"></i>
+                        <span>ربط كابل الميزان</span>
+                    </button>
+                </div>
+
+                <!-- Live Visual SVG Truck on Weighbridge Platform -->
+                <div class="mt-4 bg-slate-950/90 rounded-xl p-3 border border-slate-800 relative overflow-hidden">
+                    <div class="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                        <span><i class="fa-solid fa-eye text-emerald-400 ml-1"></i>معاينة طبلية الميزان (طول 18 متر)</span>
+                        <span id="platformStatusText" class="text-emerald-400 font-bold">سيارة فوق الطبلية</span>
+                    </div>
+
+                    <svg viewBox="0 0 400 105" class="w-full h-24">
+                        <!-- Sky/Background Grid -->
+                        <line x1="0" y1="85" x2="400" y2="85" stroke="#334155" stroke-width="2" />
+                        <!-- Weighbridge Steel Platform & Ramps -->
+                        <polygon points="15,85 40,76 360,76 385,85" fill="#1e293b" stroke="#00f2fe" stroke-width="1.5" />
+                        <!-- Load Cells under platform -->
+                        <rect x="55" y="78" width="12" height="7" fill="#f59e0b" rx="1"/>
+                        <rect x="194" y="78" width="12" height="7" fill="#f59e0b" rx="1"/>
+                        <rect x="333" y="78" width="12" height="7" fill="#f59e0b" rx="1"/>
+
+                        <!-- Animated Truck Group -->
+                        <g id="svgTruckGroup" transform="translate(0, 0)" class="transition-transform duration-500">
+                            <!-- Cargo Mound (Height scales with weight) -->
+                            <path id="svgCargoLoad" d="M 135,38 Q 220,12 315,38 Z" fill="#f59e0b" opacity="0.85" />
+                            <!-- Trailer Body -->
+                            <rect x="130" y="34" width="195" height="28" rx="3" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/>
+                            <line x1="165" y1="34" x2="165" y2="62" stroke="#1e293b" stroke-width="2"/>
+                            <line x1="205" y1="34" x2="205" y2="62" stroke="#1e293b" stroke-width="2"/>
+                            <line x1="245" y1="34" x2="245" y2="62" stroke="#1e293b" stroke-width="2"/>
+                            <line x1="285" y1="34" x2="285" y2="62" stroke="#1e293b" stroke-width="2"/>
+
+                            <!-- Truck Cabin (Left side facing left) -->
+                            <path d="M 75,62 L 75,42 L 92,28 L 125,28 L 125,62 Z" fill="#10b981" stroke="#059669" stroke-width="1.5"/>
+                            <!-- Cabin Window -->
+                            <polygon points="80,43 93,32 112,32 112,43" fill="#020617"/>
+                            <!-- Headlight Glow -->
+                            <polygon points="75,54 45,48 45,62" fill="rgba(250, 204, 21, 0.35)"/>
+
+                            <!-- Truck Wheels -->
+                            <circle cx="98" cy="67" r="9" fill="#0f172a" stroke="#94a3b8" stroke-width="3"/>
+                            <circle cx="160" cy="67" r="9" fill="#0f172a" stroke="#94a3b8" stroke-width="3"/>
+                            <circle cx="184" cy="67" r="9" fill="#0f172a" stroke="#94a3b8" stroke-width="3"/>
+                            <circle cx="275" cy="67" r="9" fill="#0f172a" stroke="#94a3b8" stroke-width="3"/>
+                            <circle cx="299" cy="67" r="9" fill="#0f172a" stroke="#94a3b8" stroke-width="3"/>
+                        </g>
+                    </svg>
+                </div>
+
+                <!-- Simulation & Manual Entry Controls -->
+                <div class="mt-3 pt-3 border-t border-slate-800 space-y-2.5 text-xs">
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-slate-300"><i class="fa-solid fa-sliders text-cyan-400 ml-1"></i>محاكاة الوزن أو الإدخال اليدوي:</span>
+                        <input type="number" id="manualWeightInput" value="14200" step="10" oninput="setScaleWeight(this.value, false)" class="w-28 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-left font-mono font-bold text-emerald-400 focus:border-emerald-400 focus:outline-none">
+                    </div>
+
+                    <input type="range" id="weightSlider" min="0" max="85000" step="20" value="14200" oninput="setScaleWeight(this.value, true)" class="w-full accent-emerald-400 cursor-pointer">
+
+                    <!-- Quick Preset Weight Buttons for Demo & Testing -->
+                    <div class="grid grid-cols-4 gap-1.5 pt-1">
+                        <button onclick="simulateTruckArrival(4250)" class="py-1.5 px-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-bold text-slate-300 transition">
+                            ربع نقل فارغ<br><span class="text-cyan-400 font-mono">4,250</span>
+                        </button>
+                        <button onclick="simulateTruckArrival(14200)" class="py-1.5 px-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-bold text-slate-300 transition">
+                            تريلا فارغة<br><span class="text-cyan-400 font-mono">14,200</span>
+                        </button>
+                        <button onclick="simulateTruckArrival(38650)" class="py-1.5 px-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-bold text-slate-300 transition">
+                            محمل متوسط<br><span class="text-emerald-400 font-mono">38,650</span>
+                        </button>
+                        <button onclick="simulateTruckArrival(62480)" class="py-1.5 px-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-bold text-slate-300 transition">
+                            تريلا محملة<br><span class="text-amber-400 font-mono">62,480</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. TRUCKS CURRENTLY INSIDE WAITING FOR 2ND WEIGHT (سيارات قيد الانتظار) -->
+            <div class="glass-card rounded-2xl p-4 border border-amber-500/30">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-sm font-extrabold text-amber-300 flex items-center gap-2">
+                        <i class="fa-solid fa-hourglass-half text-amber-400"></i>
+                        <span>سيارات بالداخل في انتظار الوزنة الثانية</span>
+                    </h2>
+                    <span id="badgePendingCount" class="px-2 py-0.5 rounded-full text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">0</span>
+                </div>
+
+                <p class="text-[11px] text-slate-400 mb-3">
+                    اضغط على <strong class="text-emerald-400">"وزنة ثانية وتقفيل"</strong> عندما تعود السيارة فوق الميزان لحساب الصافي وإصدار الكارتة فوراً:
+                </p>
+
+                <div id="pendingTrucksList" class="space-y-2.5 max-h-[360px] overflow-y-auto pr-1">
+                    <!-- Populated via JS -->
+                </div>
+            </div>
+
+        </aside>
+
+        <!-- LEFT / CENTER AREA: WEIGHING WORKSTATION & ARCHIVE TABS (8 Columns) -->
+        <section class="lg:col-span-8 flex flex-col gap-4">
+
+            <!-- Main Navigation Tabs -->
+            <div class="glass-card rounded-2xl p-2 flex flex-wrap items-center justify-between gap-2">
+                <div class="flex flex-wrap items-center gap-1.5">
+                    <button onclick="switchMainTab('firstWeight')" id="tabBtn-firstWeight" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold flex items-center gap-2 transition bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20">
+                        <i class="fa-solid fa-scale-unbalanced"></i>
+                        <span>تسجيل وزنة جديدة (أولى / سريعة)</span>
+                    </button>
+                    <button onclick="switchMainTab('secondWeight')" id="tabBtn-secondWeight" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold flex items-center gap-2 transition text-slate-300 hover:bg-slate-800">
+                        <i class="fa-solid fa-scale-balanced text-amber-400"></i>
+                        <span>تقفيل الوزنة الثانية واستخراج الكارتة</span>
+                    </button>
+                    <button onclick="switchMainTab('archive')" id="tabBtn-archive" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold flex items-center gap-2 transition text-slate-300 hover:bg-slate-800">
+                        <i class="fa-solid fa-table-list text-cyan-400"></i>
+                        <span>سجل الكارتات والتقارير المحاسبية</span>
+                    </button>
+                </div>
+
+                <div class="hidden xl:flex items-center gap-2 px-3 text-xs text-slate-400">
+                    <i class="fa-solid fa-shield-halved text-emerald-400"></i>
+                    <span>حفظ تلقائي آمن بالمتصفح</span>
+                </div>
+            </div>
+
+            <!-- TAB 1: NEW FIRST WEIGHT / SINGLE QUICK WEIGHT FORM -->
+            <div id="tabContent-firstWeight" class="glass-card rounded-2xl p-4 sm:p-6 space-y-5">
+                <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800">
+                    <div>
+                        <h2 class="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                            <i class="fa-solid fa-truck-front text-emerald-400"></i>
+                            <span>بيانات السيارة والوزنة الجديدة</span>
+                        </h2>
+                        <p class="text-xs text-slate-400">سجّل الوزنة الأولى للسيارة (أو وزنة كاملة مباشرة إذا كان وزن الفارغ معروفاً مسبقاً)</p>
+                    </div>
+
+                    <!-- Mode Switcher: Two-Stage vs Direct Single Pass -->
+                    <div class="bg-slate-900 p-1 rounded-xl border border-slate-700 flex items-center text-xs font-bold">
+                        <button type="button" onclick="setWeighingMode('twoStage')" id="modeBtn-twoStage" class="px-3 py-1.5 rounded-lg bg-emerald-500 text-slate-950 transition">
+                            نظام وزنتين (أولى + ثانية)
+                        </button>
+                        <button type="button" onclick="setWeighingMode('direct')" id="modeBtn-direct" class="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white transition">
+                            وزنة سريعة (إدخال الفارغ يدوياً)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Form Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
+
+                    <!-- Visual Egyptian License Plate Input (4 Cols) -->
+                    <div class="md:col-span-4 flex flex-col justify-between bg-slate-900/70 p-3.5 rounded-2xl border border-slate-800">
+                        <label class="text-xs font-bold text-slate-300 mb-2 flex items-center justify-between">
+                            <span>لوحة أرقام السيارة (مقطورة / نقل):</span>
+                            <span class="text-[10px] text-cyan-400">مرور مصر</span>
+                        </label>
+
+                        <div class="egypt-plate rounded-xl p-2.5 w-full max-w-[240px] mx-auto">
+                            <div class="flex items-center justify-between text-[11px] font-black text-white pb-1.5 px-1">
+                                <span>EGYPT</span>
+                                <span>مـصـر</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-1.5 pt-1">
+                                <input type="text" id="inpPlateNums" value="4892" placeholder="أرقام" class="bg-white/90 text-slate-950 text-center font-black text-base rounded py-1 border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-600">
+                                <input type="text" id="inpPlateLetters" value="ن ق ل" placeholder="حروف" class="bg-white/90 text-slate-950 text-center font-black text-base rounded py-1 border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-600">
+                            </div>
+                        </div>
+
+                        <div class="mt-2.5 text-[11px] text-center text-slate-400">
+                            نوع السيارة:
+                            <select id="inpTruckType" class="bg-slate-800 border border-slate-700 rounded-md px-2 py-0.5 text-white font-bold mr-1">
+                                <option value="تريلا نقل ثقيل">تريلا نقل ثقيل</option>
+                                <option value="سيارة جرار بمقطورة">سيارة جرار بمقطورة</option>
+                                <option value="نقل قلاب (جامبو)">نقل قلاب (جامبو)</option>
+                                <option value="نصف نقل / شيفروليه">نصف نقل / شيفروليه</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Driver, Client & Goods Details (8 Cols) -->
+                    <div class="md:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
+                        <div>
+                            <label class="block text-slate-300 font-bold mb-1">اسم العميل / الشركة / المورد:</label>
+                            <div class="relative">
+                                <i class="fa-solid fa-building-user absolute right-3 top-2.5 text-slate-500"></i>
+                                <input type="text" id="inpClientName" placeholder="مثال: شركة المقاولون العرب / مصنع الإيمان" value="شركة الوادي لتجارة الأعلاف والحبوب" class="w-full bg-slate-900 border border-slate-700 rounded-xl pr-9 pl-3 py-2 text-white font-bold focus:border-emerald-400 focus:outline-none">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-slate-300 font-bold mb-1">نوع الحمولة / الصنف:</label>
+                            <div class="flex gap-1.5">
+                                <select id="inpMaterial" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold focus:border-emerald-400 focus:outline-none">
+                                    <option value="ذرة صفراء أرجنتيني">ذرة صفراء أرجنتيني</option>
+                                    <option value="قمح محلي صوامع">قمح محلي صوامع</option>
+                                    <option value="أعلاف تسمين دواجن">أعلاف تسمين دواجن</option>
+                                    <option value="حديد تسليح عز">حديد تسليح عز</option>
+                                    <option value="أسمنت بورتلاندي عادي">أسمنت بورتلاندي عادي</option>
+                                    <option value="سن محاجر وفيرما">سن محاجر وفيرما</option>
+                                    <option value="رمل مباني ناعم">رمل مباني ناعم</option>
+                                    <option value="خردة حديد ومعادن">خردة حديد ومعادن</option>
+                                    <option value="أرز شعير">أرز شعير</option>
+                                    <option value="بطاطس / حاصلات زراعية">بطاطس / حاصلات زراعية</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-slate-300 font-bold mb-1">اسم السائق:</label>
+                            <input type="text" id="inpDriverName" placeholder="اسم السائق" value="المعلم محمود عبد القادر" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-semibold focus:border-emerald-400 focus:outline-none">
+                        </div>
+
+                        <div>
+                            <label class="block text-slate-300 font-bold mb-1">رقم موبايل السائق / العميل (للواتساب):</label>
+                            <input type="text" id="inpDriverPhone" placeholder="010xxxxxxxx" value="01012345678" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono focus:border-emerald-400 focus:outline-none">
+                        </div>
+
+                        <div>
+                            <label class="block text-slate-300 font-bold mb-1">اتجاه العملية:</label>
+                            <select id="inpDirection" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-cyan-300 font-bold focus:border-emerald-400 focus:outline-none">
+                                <option value="وارد (مشتريات / تفريغ)">📥 وارد (دخول محمل لتفريغ البضاعة)</option>
+                                <option value="صادر (مبيعات / تحميل)">📤 صادر (دخول فارغ لتحميل البضاعة)</option>
+                                <option value="وزنة للغير (خدمة ميزان)">⚖️ وزنة للغير (خدمة كارتة ميزان فقط)</option>
+                            </select>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-slate-300 font-bold mb-1">سعر الطن (اختياري):</label>
+                                <input type="number" id="inpPricePerTon" value="12500" placeholder="0" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-emerald-400 font-bold focus:border-emerald-400 focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-slate-300 font-bold mb-1">رسوم كارتة الميزان:</label>
+                                <input type="number" id="inpScaleFee" value="150" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-amber-400 font-bold focus:border-emerald-400 focus:outline-none">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Direct Mode Extra Row (Shown only when "وزنة سريعة" is chosen) -->
+                <div id="directModeTareBox" class="hidden p-4 rounded-2xl bg-cyan-950/30 border border-cyan-500/40 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                    <div>
+                        <label class="block text-cyan-300 font-bold mb-1">الوزن الفارغ المعلوم مسبقاً (كجم):</label>
+                        <input type="number" id="inpDirectTareKG" value="14200" oninput="updateDirectPreview()" class="w-full bg-slate-900 border border-cyan-500/50 rounded-xl px-3 py-2 text-white font-mono font-bold text-base">
+                    </div>
+                    <div>
+                        <label class="block text-cyan-300 font-bold mb-1">خصم عيار / رطوبة / شوائب (كجم):</label>
+                        <input type="number" id="inpDirectDiscountKG" value="0" oninput="updateDirectPreview()" class="w-full bg-slate-900 border border-cyan-500/50 rounded-xl px-3 py-2 text-amber-400 font-mono font-bold text-base">
+                    </div>
+                    <div class="flex flex-col justify-center bg-slate-900/90 rounded-xl p-2.5 border border-slate-800 text-center">
+                        <span class="text-slate-400 text-[11px]">الوزن الصافي الفوري المتوقع:</span>
+                        <span id="lblDirectNetPreview" class="text-lg font-black text-emerald-400 font-mono">0 كجم</span>
+                    </div>
+                </div>
+
+                <!-- Notes & Big Capture Action Button -->
+                <div class="pt-2 border-t border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                    <input type="text" id="inpNotes" placeholder="ملاحظات إضافية على الكارتة (مثلاً: رقم البوليصة، اسم المندوب، رقم المخزن...)" class="flex-1 bg-slate-900/90 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-emerald-400 focus:outline-none">
+
+                    <button onclick="submitFirstOrDirectWeight()" id="btnCapturePrimary" class="px-6 py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-sm flex items-center justify-center gap-2.5 shadow-xl shadow-emerald-500/25 transition active:scale-95">
+                        <i class="fa-solid fa-camera-rotate text-lg"></i>
+                        <span id="btnCapturePrimaryText">التقاط الوزن الحالي (<span class="live-btn-kg font-mono">14,200</span> كجم) وتسجيل الوزنة الأولى</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- TAB 2: COMPLETE SECOND WEIGHT WORKSTATION (تقفيل الوزنة الثانية) -->
+            <div id="tabContent-secondWeight" class="hidden glass-card rounded-2xl p-4 sm:p-6 space-y-5 border border-amber-500/40">
+                <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800">
+                    <div>
+                        <h2 class="text-base sm:text-lg font-black text-amber-400 flex items-center gap-2">
+                            <i class="fa-solid fa-scale-balanced"></i>
+                            <span>تقفيل الوزنة الثانية وحساب الصافي النهائي</span>
+                        </h2>
+                        <p class="text-xs text-slate-400">اختر السيارة من القائمة أو اضغط عليها من يمين الشاشة لحساب الفرق بين الوزنتين أوتوماتيكياً</p>
+                    </div>
+
+                    <select id="selPendingTicket" onchange="loadPendingForSecondWeight(this.value)" class="bg-slate-900 border border-amber-500/50 rounded-xl px-4 py-2 text-xs sm:text-sm font-extrabold text-white focus:outline-none">
+                        <!-- Populated via JS -->
+                    </select>
+                </div>
+
+                <!-- Comparison Cards: 1st Weight vs Current 2nd Weight vs Net Weight -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <!-- First Weight Card -->
+                    <div class="bg-slate-900/90 rounded-2xl p-4 border border-slate-700/80">
+                        <div class="text-xs text-slate-400 flex items-center justify-between">
+                            <span>الوزنة الأولى المسجلة</span>
+                            <span id="swFirstTime" class="font-mono text-[11px] text-cyan-400">--:--</span>
+                        </div>
+                        <div class="text-2xl font-black text-white font-mono mt-1"><span id="swFirstWeightKG">0</span> <span class="text-xs font-sans text-slate-400">كجم</span></div>
+                        <div class="mt-2 pt-2 border-t border-slate-800 text-xs text-slate-300 space-y-1">
+                            <div>السيارة: <strong id="swPlate" class="text-amber-300">---</strong></div>
+                            <div>العميل: <strong id="swClient">---</strong></div>
+                            <div>الصنف: <strong id="swMaterial" class="text-cyan-300">---</strong></div>
+                        </div>
+                    </div>
+
+                    <!-- Second Weight Live Card -->
+                    <div class="bg-slate-900/90 rounded-2xl p-4 border-2 border-amber-500/40">
+                        <div class="text-xs text-amber-300 flex items-center justify-between font-bold">
+                            <span>الوزنة الثانية (القراءة الحالية للميزان)</span>
+                            <i class="fa-solid fa-bolt text-amber-400 animate-pulse"></i>
+                        </div>
+                        <div class="text-3xl font-black text-amber-400 font-mono mt-1"><span id="swSecondWeightKG">0</span> <span class="text-xs font-sans text-slate-400">كجم</span></div>
+
+                        <!-- Impurity / Discount Input -->
+                        <div class="mt-3 pt-2 border-t border-slate-800 grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                                <label class="block text-slate-400 mb-1">خصم شوائب/عيار (كجم):</label>
+                                <input type="number" id="swDiscountKG" value="0" min="0" oninput="recalcSecondWeightSummary()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white font-mono font-bold">
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 mb-1">أو نسبة خصم (%):</label>
+                                <input type="number" id="swDiscountPercent" value="0" min="0" max="50" step="0.5" oninput="applyPercentDiscount()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-amber-300 font-mono font-bold">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Final Net Weight & Total Money Card -->
+                    <div class="bg-gradient-to-br from-emerald-950/80 to-slate-900 rounded-2xl p-4 border-2 border-emerald-500/50 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between text-xs text-emerald-300 font-bold">
+                                <span>الوزن الصافي النهائي (NET)</span>
+                                <span id="swNetTons" class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">0.000 طن</span>
+                            </div>
+                            <div class="text-3xl font-black text-emerald-400 font-mono mt-1"><span id="swNetWeightKG">0</span> <span class="text-xs font-sans text-emerald-200">كجم</span></div>
+                        </div>
+
+                        <div class="mt-3 pt-2 border-t border-emerald-800/60 text-xs space-y-1">
+                            <div class="flex justify-between text-slate-300">
+                                <span>الوزن القائم (الأكبر):</span>
+                                <strong class="font-mono"><span id="swGrossKG">0</span> كجم</strong>
+                            </div>
+                            <div class="flex justify-between text-slate-300">
+                                <span>الوزن الفارغ (الأصغر):</span>
+                                <strong class="font-mono"><span id="swTareKG">0</span> كجم</strong>
+                            </div>
+                            <div class="flex justify-between text-emerald-300 font-extrabold pt-1 border-t border-emerald-900">
+                                <span>قيمة البضاعة بالحساب:</span>
+                                <span><span id="swGoodsValue">0</span> <span class="curr-lbl">ج.م</span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end pt-2">
+                    <button onclick="completeSecondWeightTicket()" class="w-full sm:w-auto px-8 py-4 rounded-xl bg-gradient-to-r from-amber-500 to-emerald-500 hover:from-amber-400 hover:to-emerald-400 text-slate-950 font-black text-sm flex items-center justify-center gap-3 shadow-xl shadow-emerald-500/20 transition active:scale-95">
+                        <i class="fa-solid fa-print text-lg"></i>
+                        <span>اعتماد الوزنة الثانية وحفظ وطباعة كارتة البسكول الرسمية</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- TAB 3: COMPLETED TICKETS ARCHIVE & FINANCIAL REPORTS -->
+            <div id="tabContent-archive" class="hidden glass-card rounded-2xl p-4 sm:p-5 space-y-4">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex items-center gap-2 flex-1 min-w-[240px]">
+                        <div class="relative flex-1">
+                            <i class="fa-solid fa-magnifying-glass absolute right-3.5 top-3 text-slate-400 text-xs"></i>
+                            <input type="text" id="searchArchiveInput" oninput="renderArchiveTable()" placeholder="ابحث برقم الكارتة، رقم السيارة، اسم العميل، أو نوع الحمولة..." class="w-full bg-slate-900 border border-slate-700 rounded-xl pr-9 pl-3 py-2 text-xs text-white focus:border-cyan-400 focus:outline-none">
+                        </div>
+                        <select id="filterMaterialSelect" onchange="renderArchiveTable()" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 font-bold">
+                            <option value="ALL">كل الأصناف</option>
+                            <option value="ذرة صفراء أرجنتيني">ذرة صفراء</option>
+                            <option value="قمح محلي صوامع">قمح صوامع</option>
+                            <option value="حديد تسليح عز">حديد تسليح</option>
+                            <option value="أعلاف تسمين دواجن">أعلاف دواجن</option>
+                            <option value="سن محاجر وفيرما">سن محاجر</option>
+                            <option value="خردة حديد ومعادن">خردة معادن</option>
+                        </select>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <button onclick="exportBackupJSON()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-download"></i>
+                            <span>نسخة احتياطية</span>
+                        </button>
+                        <label class="cursor-pointer px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-upload"></i>
+                            <span>استرجاع بيانات</span>
+                            <input type="file" accept=".json" class="hidden" onchange="importBackupJSON(event)">
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Completed Tickets Table -->
+                <div class="overflow-x-auto rounded-xl border border-slate-800">
+                    <table class="w-full text-xs text-right">
+                        <thead class="bg-slate-900/95 text-slate-400 border-b border-slate-800">
+                            <tr>
+                                <th class="py-3 px-3">رقم الكارتة</th>
+                                <th class="py-3 px-3">التاريخ والوقت</th>
+                                <th class="py-3 px-3">رقم السيارة</th>
+                                <th class="py-3 px-3">العميل والاتجاه</th>
+                                <th class="py-3 px-3">الصنف</th>
+                                <th class="py-3 px-3 text-center">القائم (كجم)</th>
+                                <th class="py-3 px-3 text-center">الفارغ (كجم)</th>
+                                <th class="py-3 px-3 text-center text-emerald-400">الصافي (كجم / طن)</th>
+                                <th class="py-3 px-3 text-center">إجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="archiveTableBody" class="divide-y divide-slate-800/80 bg-slate-950/40">
+                            <!-- Populated via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Live Quick View of Latest Completed Tickets (Always visible below form for convenience) -->
+            <div class="glass-card rounded-2xl p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-xs font-extrabold text-slate-300 flex items-center gap-2">
+                        <i class="fa-solid fa-receipt text-emerald-400"></i>
+                        <span>آخر الكارتات المعتمدة اليوم (اضغط على أي كارتة لمعاينتها وطباعتها أو إرسالها واتساب)</span>
+                    </h3>
+                    <button onclick="switchMainTab('archive')" class="text-xs text-cyan-400 hover:underline font-bold">عرض السجل الكامل ←</button>
+                </div>
+                <div id="recentTicketsStrip" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                    <!-- Populated via JS -->
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- OFFICIAL WEIGHBRIDGE TICKET MODAL (معاينة وطباعة كارتة الميزان المعتمدة) -->
+    <div id="ticketModal" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md hidden items-center justify-center p-3 sm:p-6 overflow-y-auto">
+        <div class="max-w-2xl w-full my-auto">
+            <!-- Modal Action Bar (Hidden when printing) -->
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3 bg-slate-900 p-3 rounded-2xl border border-slate-700 no-print">
+                <div class="flex items-center gap-2 text-xs font-bold text-emerald-400">
+                    <i class="fa-solid fa-circle-check text-base"></i>
+                    <span>كارتة ميزان بسكول رسمية جاهزة للطباعة أو الإرسال</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="window.print()" class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-lg">
+                        <i class="fa-solid fa-print"></i>
+                        <span>طباعة الكارتة الآن</span>
+                    </button>
+                    <button onclick="shareTicketWhatsApp()" class="px-4 py-2 rounded-xl bg-green-600 hover:bg-green-500 text-white font-black text-xs flex items-center gap-1.5 shadow-lg">
+                        <i class="fa-brands fa-whatsapp text-sm"></i>
+                        <span>إرسال للعميل واتساب</span>
+                    </button>
+                    <button onclick="closeTicketModal()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold">
+                        إغلاق ✕
+                    </button>
+                </div>
+            </div>
+
+            <!-- Printable Ticket Sheet -->
+            <div id="ticketPrintContainer">
+                <div class="ticket-paper bg-white text-slate-950 rounded-2xl p-6 border-2 border-slate-900 shadow-2xl">
+                    <!-- Ticket Header -->
+                    <div class="flex items-start justify-between border-b-2 border-slate-900 pb-4 mb-4">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-scale-balanced text-2xl text-slate-900"></i>
+                                <h2 id="tktCompanyName" class="text-xl font-black text-slate-950">ميزان بسكول النور الحديث (120 طن)</h2>
+                            </div>
+                            <p id="tktCompanySub" class="text-xs text-slate-700 font-semibold mt-1">طريق مصر إسكندرية الزراعي • ت: 01000000000</p>
+                            <div class="mt-2 inline-block bg-slate-900 text-white text-xs font-black px-3 py-1 rounded">
+                                شهادة وزن بسكول إلكتروني معتمدة
+                            </div>
+                        </div>
+
+                        <div class="text-left flex flex-col items-end">
+                            <div class="text-sm font-black text-slate-900">رقم الكارتة: <span id="tktSerialNo" class="font-mono text-base">#WB-1042</span></div>
+                            <div class="text-[11px] text-slate-600 font-semibold" id="tktPrintDate">تاريخ الإصدار: --/--/----</div>
+                            <!-- Anti-forgery Verification Matrix Code Canvas -->
+                            <canvas id="tktQrCanvas" width="64" height="64" class="mt-1.5 border border-slate-400 p-0.5 rounded"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Vehicle & Customer Info Grid -->
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-100 p-3.5 rounded-xl border border-slate-300 text-xs mb-4">
+                        <div>
+                            <span class="text-slate-500 block">رقم لوحة السيارة:</span>
+                            <strong id="tktPlate" class="text-base font-black text-slate-950">4892 ن ق ل</strong>
+                        </div>
+                        <div>
+                            <span class="text-slate-500 block">اسم العميل / المورد:</span>
+                            <strong id="tktClient" class="text-sm font-black text-slate-950">---</strong>
+                        </div>
+                        <div>
+                            <span class="text-slate-500 block">نوع الحمولة / الصنف:</span>
+                            <strong id="tktMaterial" class="text-sm font-black text-slate-950">---</strong>
+                        </div>
+                        <div>
+                            <span class="text-slate-500 block">اسم السائق:</span>
+                            <strong id="tktDriver" class="font-bold text-slate-900">---</strong>
+                        </div>
+                        <div>
+                            <span class="text-slate-500 block">نوع السيارة والاتجاه:</span>
+                            <strong id="tktDirection" class="font-bold text-slate-900">---</strong>
+                        </div>
+                        <div>
+                            <span class="text-slate-500 block">ملاحظات الفحص:</span>
+                            <strong id="tktNotes" class="font-bold text-slate-900">---</strong>
+                        </div>
+                    </div>
+
+                    <!-- Official Weights Table -->
+                    <table class="w-full text-xs border-2 border-slate-900 mb-4 text-right">
+                        <thead>
+                            <tr class="bg-slate-900 text-white font-bold">
+                                <th class="p-2.5 border border-slate-700">بيان الوزنة</th>
+                                <th class="p-2.5 border border-slate-700 text-center">التاريخ والوقت</th>
+                                <th class="p-2.5 border border-slate-700 text-center">الوزن بالكيلوجرام (KG)</th>
+                                <th class="p-2.5 border border-slate-700 text-center">الوزن بالطن (Ton)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-300 font-bold">
+                            <tr>
+                                <td class="p-2.5 border border-slate-300 bg-slate-50">الوزن القائم (Gross Weight)</td>
+                                <td id="tktGrossTime" class="p-2.5 border border-slate-300 text-center font-mono">---</td>
+                                <td id="tktGrossKG" class="p-2.5 border border-slate-300 text-center font-mono text-base">0 كجم</td>
+                                <td id="tktGrossTons" class="p-2.5 border border-slate-300 text-center font-mono">0.000 طن</td>
+                            </tr>
+                            <tr>
+                                <td class="p-2.5 border border-slate-300 bg-slate-50">الوزن الفارغ (Tare Weight)</td>
+                                <td id="tktTareTime" class="p-2.5 border border-slate-300 text-center font-mono">---</td>
+                                <td id="tktTareKG" class="p-2.5 border border-slate-300 text-center font-mono text-base">0 كجم</td>
+                                <td id="tktTareTons" class="p-2.5 border border-slate-300 text-center font-mono">0.000 طن</td>
+                            </tr>
+                            <tr>
+                                <td class="p-2.5 border border-slate-300 bg-slate-50">خصم شوائب / رطوبة / عيار</td>
+                                <td class="p-2.5 border border-slate-300 text-center text-slate-500">خصم فني</td>
+                                <td id="tktDiscountKG" class="p-2.5 border border-slate-300 text-center font-mono">0 كجم</td>
+                                <td id="tktDiscountTons" class="p-2.5 border border-slate-300 text-center font-mono">0.000 طن</td>
+                            </tr>
+                            <tr class="bg-slate-200 text-slate-950 font-black text-sm">
+                                <td class="p-3 border-2 border-slate-900">الوزن الصافي النهائي (NET WEIGHT)</td>
+                                <td class="p-3 border-2 border-slate-900 text-center">صافي معتمد</td>
+                                <td id="tktNetKG" class="p-3 border-2 border-slate-900 text-center font-mono text-xl">0 كجم</td>
+                                <td id="tktNetTons" class="p-3 border-2 border-slate-900 text-center font-mono text-lg">0.000 طن</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- Financial Summary & Signatures -->
+                    <div class="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-slate-300 text-xs">
+                        <div class="space-y-1">
+                            <div>رسوم كارتة الميزان المسددة: <strong id="tktScaleFee" class="font-bold">150 ج.م</strong></div>
+                            <div id="tktGoodsValueRow">إجمالي قيمة الحمولة (حسب سعر الطن): <strong id="tktGoodsValue" class="font-black text-sm">0 ج.م</strong></div>
+                        </div>
+
+                        <div class="flex items-center gap-8 text-center pt-4">
+                            <div>
+                                <div class="text-slate-600 font-bold mb-5">توقيع السائق المستلم</div>
+                                <div class="border-b border-dashed border-slate-500 w-28"></div>
+                            </div>
+                            <div>
+                                <div class="text-slate-600 font-bold mb-5">القباني المسؤول والختم</div>
+                                <div class="border-b border-dashed border-slate-500 w-28"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settingsModal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4 no-print">
+        <div class="glass-card rounded-2xl max-w-lg w-full p-5 border border-emerald-500/40 shadow-2xl">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+                <h3 class="text-base font-extrabold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-emerald-400"></i>
+                    <span>إعدادات اسم الميزان والربط الهاردوير</span>
+                </h3>
+                <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white">✕</button>
+            </div>
+
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-slate-300 font-bold mb-1">اسم محطة الميزان / الشركة (يظهر أعلى البرنامج وفي الكارتة):</label>
+                    <input type="text" id="cfgScaleName" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold">
+                </div>
+                <div>
+                    <label class="block text-slate-300 font-bold mb-1">العنوان وأرقام التليفونات:</label>
+                    <input type="text" id="cfgScaleAddress" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-slate-300 font-bold mb-1">العملة الافتراضية:</label>
+                        <select id="cfgCurrency" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold">
+                            <option value="ج.م">جنيه مصري (ج.م)</option>
+                            <option value="ر.س">ريال سعودي (ر.س)</option>
+                            <option value="د.إ">درهم إماراتي (د.إ)</option>
+                            <option value="$">دولار ($)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-slate-300 font-bold mb-1">سرعة كابل الميزان (Baud Rate):</label>
+                        <select id="cfgBaudRate" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-cyan-300 font-mono font-bold">
+                            <option value="9600">9600 bps (القياسي لأغلب الموازين)</option>
+                            <option value="2400">2400 bps (Yaohua A9)</option>
+                            <option value="4800">4800 bps</option>
+                            <option value="19200">19200 bps</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-[11px] text-slate-400 leading-relaxed">
+                    <strong class="text-cyan-300 block mb-1"><i class="fa-solid fa-plug ml-1"></i>معلومة هامة لربط الكابل الحقيقي:</strong>
+                    عند توصيل كابل الـ RS232-to-USB من رأس الميزان للكمبيوتر، اضغط على زر <strong>"ربط كابل الميزان"</strong> تحت الشاشة الديجيتال، واختار الـ COM Port ليقرأ البرنامج الوزن الحقيقي تلقائياً.
+                </div>
+
+                <div class="flex justify-end pt-3 border-t border-slate-800">
+                    <button onclick="saveScaleSettings()" class="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black transition">
+                        حفظ الإعدادات
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION -->
+    <div id="toastBanner" class="fixed bottom-4 left-4 z-50 px-4 py-3 rounded-xl bg-emerald-500 text-slate-950 font-black text-xs shadow-2xl transition-all duration-300 opacity-0 pointer-events-none translate-y-4">
+        تم الحفظ بنجاح
+    </div>
+
+    <script>
+        /********************************************************************
+         * 1. STATE, CONFIGURATION & REALISTIC SAMPLE DATA
+         ********************************************************************/
+        let scaleConfig = {
+            name: 'ميزان بسكول النور الحديث (120 طن)',
+            address: 'طريق مصر إسكندرية الزراعي • ت: 01009988776',
+            currency: 'ج.م',
+            baudRate: 9600
+        };
+
+        try {
+            const savedCfg = localStorage.getItem('wb_pro_config_v4');
+            if (savedCfg) scaleConfig = { ...scaleConfig, ...JSON.parse(savedCfg) };
+        } catch (e) {}
+
+        let currentWeightKG = 14200;
+        let isWeightStable = true;
+        let currentWeighingMode = 'twoStage'; // 'twoStage' | 'direct'
+        let activeViewingTicket = null;
+        let fluctuationTimer = null;
+
+        // Sample Pending Trucks (Waiting inside facility for 2nd weight)
+        let pendingTickets = [
+            {
+                id: 'P-101',
+                plate: '4892 ن ق ل',
+                truckType: 'تريلا نقل ثقيل',
+                client: 'شركة الوادي لتجارة الأعلاف والحبوب',
+                driver: 'المعلم محمود عبد القادر',
+                phone: '01012345678',
+                material: 'ذرة صفراء أرجنتيني',
+                direction: 'وارد (مشتريات / تفريغ)',
+                firstWeightKG: 54860,
+                firstTime: '10:15 ص',
+                pricePerTon: 12500,
+                scaleFee: 150,
+                notes: 'شحنة ميناء دمياط - بوليصة 441'
+            },
+            {
+                id: 'P-102',
+                plate: '7153 ر م س',
+                truckType: 'سيارة جرار بمقطورة',
+                client: 'مصنع الدلتا للصلب والحديد',
+                driver: 'حسنين السيد',
+                phone: '01223344556',
+                material: 'خردة حديد ومعادن',
+                direction: 'صادر (مبيعات / تحميل)',
+                firstWeightKG: 15420,
+                firstTime: '11:05 ص',
+                pricePerTon: 19000,
+                scaleFee: 200,
+                notes: 'فارغ جرار ومقطورة'
+            },
+            {
+                id: 'P-103',
+                plate: '9318 د هـ و',
+                truckType: 'نقل قلاب (جامبو)',
+                client: 'المقاولون المتحدون للإنشاءات',
+                driver: 'سعيد أبو المعاطي',
+                phone: '01112233445',
+                material: 'سن محاجر وفيرما',
+                direction: 'وارد (مشتريات / تفريغ)',
+                firstWeightKG: 28940,
+                firstTime: '11:40 ص',
+                pricePerTon: 450,
+                scaleFee: 100,
+                notes: 'مشروع كوبري المحور'
+            }
+        ];
+
+        // Sample Completed Weighbridge Tickets
+        let completedTickets = [
+            {
+                serial: 'WB-2041',
+                date: '2025/05/14',
+                plate: '6281 أ ب ج',
+                truckType: 'تريلا نقل ثقيل',
+                client: 'شركة مطاحن وصوامع العاشر',
+                driver: 'عبد الله الفرماوي',
+                phone: '01098765432',
+                material: 'قمح محلي صوامع',
+                direction: 'وارد (مشتريات / تفريغ)',
+                grossKG: 58420,
+                tareKG: 15120,
+                discountKG: 300,
+                netKG: 43000,
+                grossTime: '08:20 ص',
+                tareTime: '09:10 ص',
+                pricePerTon: 13200,
+                scaleFee: 150,
+                goodsValue: 567600,
+                notes: 'درجة نقاوة ممتازة - صومعة 3'
+            },
+            {
+                serial: 'WB-2042',
+                date: '2025/05/14',
+                plate: '1945 ص ط ع',
+                truckType: 'سيارة جرار بمقطورة',
+                client: 'مجموعة عز لتجارة حديد التسليح',
+                driver: 'إبراهيم الدسوقي',
+                phone: '01011223344',
+                material: 'حديد تسليح عز',
+                direction: 'صادر (مبيعات / تحميل)',
+                grossKG: 49850,
+                tareKG: 14650,
+                discountKG: 0,
+                netKG: 35200,
+                grossTime: '09:45 ص',
+                tareTime: '08:50 ص',
+                pricePerTon: 38500,
+                scaleFee: 200,
+                goodsValue: 1355200,
+                notes: 'حديد 16 مم و 12 مم'
+            },
+            {
+                serial: 'WB-2043',
+                date: '2025/05/14',
+                plate: '3391 ق ك م',
+                truckType: 'نقل قلاب (جامبو)',
+                client: 'مزارع النخيل للدواجن والأعلاف',
+                driver: 'رمضان شوقي',
+                phone: '01288776655',
+                material: 'أعلاف تسمين دواجن',
+                direction: 'صادر (مبيعات / تحميل)',
+                grossKG: 26380,
+                tareKG: 8180,
+                discountKG: 0,
+                netKG: 18200,
+                grossTime: '10:30 ص',
+                tareTime: '09:55 ص',
+                pricePerTon: 21000,
+                scaleFee: 150,
+                goodsValue: 382200,
+                notes: 'شكائر معبأة 50 كجم'
+            }
+        ];
+
+        // Load saved data from localStorage if exists
+        try {
+            const savedPending = localStorage.getItem('wb_pro_pending_v4');
+            const savedCompleted = localStorage.getItem('wb_pro_completed_v4');
+            if (savedPending) pendingTickets = JSON.parse(savedPending);
+            if (savedCompleted) completedTickets = JSON.parse(savedCompleted);
+        } catch (e) {}
+
+        function persistAllData() {
+            try {
+                localStorage.setItem('wb_pro_pending_v4', JSON.stringify(pendingTickets));
+                localStorage.setItem('wb_pro_completed_v4', JSON.stringify(completedTickets));
+            } catch (e) {}
+        }
+
+        /********************************************************************
+         * 2. SOUND EFFECTS (WEB AUDIO API - NO EXTERNAL MP3 NEEDED)
+         ********************************************************************/
+        function playScaleBeep(freq = 880, duration = 0.12) {
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                const ctx = new AudioCtx();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, ctx.currentTime);
+                gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + duration);
+            } catch (e) {}
+        }
+
+        /********************************************************************
+         * 3. DIGITAL WEIGHBRIDGE INDICATOR & REAL WEB SERIAL API
+         ********************************************************************/
+        function setScaleWeight(val, fromSlider = false) {
+            currentWeightKG = Math.max(0, Math.round(parseFloat(val) || 0));
+
+            if (fromSlider) {
+                document.getElementById('manualWeightInput').value = currentWeightKG;
+            } else {
+                document.getElementById('weightSlider').value = Math.min(85000, currentWeightKG);
+            }
+
+            updateIndicatorDisplay();
+            updateDirectPreview();
+            recalcSecondWeightSummary();
+        }
+
+        function simulateTruckArrival(targetWeight) {
+            clearInterval(fluctuationTimer);
+            isWeightStable = false;
+            let steps = 0;
+            playScaleBeep(520, 0.08);
+
+            fluctuationTimer = setInterval(() => {
+                steps++;
+                // Realistic oscillation before settling on the platform
+                const jitter = Math.round((Math.random() - 0.5) * 320 * ((10 - steps) / 10));
+                currentWeightKG = Math.max(0, targetWeight + jitter);
+                updateIndicatorDisplay();
+
+                if (steps >= 9) {
+                    clearInterval(fluctuationTimer);
+                    currentWeightKG = targetWeight;
+                    isWeightStable = true;
+                    document.getElementById('manualWeightInput').value = targetWeight;
+                    document.getElementById('weightSlider').value = targetWeight;
+                    playScaleBeep(1040, 0.16);
+                    updateIndicatorDisplay();
+                    updateDirectPreview();
+                    recalcSecondWeightSummary();
+                }
+            }, 90);
+        }
+
+        function updateIndicatorDisplay() {
+            const ledEl = document.getElementById('ledWeightKG');
+            const tonsEl = document.getElementById('ledWeightTons');
+            const indStable = document.getElementById('indStable');
+            const indZero = document.getElementById('indZero');
+
+            // Format 5+ digits LED style
+            ledEl.textContent = String(currentWeightKG).padStart(5, '0');
+            tonsEl.textContent = (currentWeightKG / 1000).toFixed(3);
+
+            // Update Stability & Zero lights
+            if (isWeightStable) {
+                ledEl.className = 'led-digits text-5xl sm:text-6xl font-black text-emerald-400 tracking-wider select-all';
+                indStable.className = 'flex items-center gap-1 text-emerald-400';
+                indStable.innerHTML = '<i class="fa-solid fa-circle text-[8px]"></i> مستقر STABLE';
+            } else {
+                ledEl.className = 'led-digits-unstable text-5xl sm:text-6xl font-black text-amber-400 tracking-wider select-all';
+                indStable.className = 'flex items-center gap-1 text-amber-400 animate-pulse';
+                indStable.innerHTML = '<i class="fa-solid fa-circle text-[8px]"></i> اهتزاز MOTION';
+            }
+
+            if (currentWeightKG === 0) {
+                indZero.className = 'flex items-center gap-1 text-cyan-400';
+            } else {
+                indZero.className = 'flex items-center gap-1 text-slate-600';
+            }
+
+            // Update SVG Truck Graphic & Cargo Height
+            const truckGroup = document.getElementById('svgTruckGroup');
+            const cargoPath = document.getElementById('svgCargoLoad');
+            const platformStatus = document.getElementById('platformStatusText');
+
+            if (currentWeightKG < 500) {
+                truckGroup.setAttribute('transform', 'translate(-350, 0)');
+                platformStatus.textContent = 'الطبلية فارغة (جاهز للوزن)';
+                platformStatus.className = 'text-slate-400 font-bold';
+            } else {
+                truckGroup.setAttribute('transform', 'translate(0, 0)');
+                platformStatus.textContent = `سيارة فوق الميزان (${(currentWeightKG / 1000).toFixed(2)} طن)`;
+                platformStatus.className = 'text-emerald-400 font-bold';
+
+                // Scale cargo height visually if weight > 16,000 kg
+                const loadRatio = Math.max(0, Math.min(1, (currentWeightKG - 14000) / 45000));
+                const peakY = 36 - Math.round(loadRatio * 28);
+                cargoPath.setAttribute('d', `M 135,36 Q 225,${peakY} 318,36 Z`);
+                cargoPath.setAttribute('opacity', loadRatio > 0.05 ? '0.9' : '0');
+            }
+
+            // Update Capture button live label
+            document.querySelectorAll('.live-btn-kg').forEach(el => {
+                el.textContent = currentWeightKG.toLocaleString();
+            });
+        }
+
+        function zeroScale() {
+            playScaleBeep(660, 0.12);
+            setScaleWeight(0, false);
+            showToast('تم تصفير شاشة الميزان (00000 كجم)');
+        }
+
+        function toggleStability() {
+            isWeightStable = !isWeightStable;
+            playScaleBeep(900, 0.1);
+            updateIndicatorDisplay();
+        }
+
+        // REAL HARDWARE RS232/USB CONNECTION VIA WEB SERIAL API
+        async function connectRealSerialScale() {
+            if (!('serial' in navigator)) {
+                showToast('متصفحك لا يدعم Web Serial API - يرجى فتح البرنامج من متصفح Google Chrome أو Edge للربط بالكابل');
+                return;
+            }
+            try {
+                const port = await navigator.serial.requestPort();
+                await port.open({ baudRate: parseInt(scaleConfig.baudRate, 10) || 9600 });
+
+                document.getElementById('serialStatusBadge').textContent = 'متصل بكابل الميزان الحقيقي COM';
+                document.getElementById('serialStatusBadge').className = 'text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+                showToast('تم الاتصال برأس الميزان عبر الكابل بنجاح!');
+
+                const textDecoder = new TextDecoderStream();
+                port.readable.pipeTo(textDecoder.writable);
+                const reader = textDecoder.readable.getReader();
+
+                let buffer = '';
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    buffer += value;
+                    const lines = buffer.split(/[\r\n]+/);
+                    buffer = lines.pop();
+                    for (const line of lines) {
+                        const match = line.match(/([+-]?\d{3,7})/);
+                        if (match) {
+                            const parsedWeight = parseInt(match[1], 10);
+                            if (!isNaN(parsedWeight)) {
+                                setScaleWeight(Math.abs(parsedWeight), false);
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                showToast('لم يتم اختيار منفذ COM أو تم إلغاء الاتصال، يعمل النظام في وضع المحاكاة.');
+            }
+        }
+
+        /********************************************************************
+         * 4. WORKFLOW TABS & WEIGHING OPERATIONS (1ST, 2ND & DIRECT)
+         ********************************************************************/
+        function switchMainTab(tabName) {
+            ['firstWeight', 'secondWeight', 'archive'].forEach(t => {
+                document.getElementById('tabContent-' + t).classList.add('hidden');
+                document.getElementById('tabBtn-' + t).className = 'px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold flex items-center gap-2 transition text-slate-300 hover:bg-slate-800';
+            });
+
+            document.getElementById('tabContent-' + tabName).classList.remove('hidden');
+            document.getElementById('tabBtn-' + tabName).className = 'px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold flex items-center gap-2 transition bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20';
+
+            if (tabName === 'secondWeight' && pendingTickets.length > 0) {
+                populatePendingDropdown();
+            } else if (tabName === 'archive') {
+                renderArchiveTable();
+            }
+        }
+
+        function setWeighingMode(mode) {
+            currentWeighingMode = mode;
+            const directBox = document.getElementById('directModeTareBox');
+            const btnTwo = document.getElementById('modeBtn-twoStage');
+            const btnDirect = document.getElementById('modeBtn-direct');
+            const btnText = document.getElementById('btnCapturePrimaryText');
+
+            if (mode === 'direct') {
+                directBox.classList.remove('hidden');
+                btnDirect.className = 'px-3 py-1.5 rounded-lg bg-cyan-400 text-slate-950 transition';
+                btnTwo.className = 'px-3 py-1.5 rounded-lg text-slate-300 hover:text-white transition';
+                btnText.innerHTML = `إصدار كارتة كاملة فوراً بالوزن الحالي (<span class="live-btn-kg font-mono">${currentWeightKG.toLocaleString()}</span> كجم)`;
+                updateDirectPreview();
+            } else {
+                directBox.classList.add('hidden');
+                btnTwo.className = 'px-3 py-1.5 rounded-lg bg-emerald-500 text-slate-950 transition';
+                btnDirect.className = 'px-3 py-1.5 rounded-lg text-slate-300 hover:text-white transition';
+                btnText.innerHTML = `التقاط الوزن الحالي (<span class="live-btn-kg font-mono">${currentWeightKG.toLocaleString()}</span> كجم) وتسجيل الوزنة الأولى`;
+            }
+        }
+
+        function updateDirectPreview() {
+            const tare = parseFloat(document.getElementById('inpDirectTareKG')?.value) || 0;
+            const discount = parseFloat(document.getElementById('inpDirectDiscountKG')?.value) || 0;
+            const gross = Math.max(currentWeightKG, tare);
+            const actualTare = Math.min(currentWeightKG, tare);
+            const net = Math.max(0, gross - actualTare - discount);
+            const el = document.getElementById('lblDirectNetPreview');
+            if (el) el.textContent = `${net.toLocaleString()} كجم (${(net / 1000).toFixed(3)} طن)`;
+        }
+
+        function getFormattedTimeNow() {
+            return new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function getFormattedDateToday() {
+            const d = new Date();
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${yyyy}/${mm}/${dd}`;
+        }
+
+        function submitFirstOrDirectWeight() {
+            if (currentWeightKG <= 0) {
+                showToast('⚠️ لا يمكن تسجيل وزنة والميزان صفر! ضع السيارة على الميزان أولاً.');
+                playScaleBeep(250, 0.25);
+                return;
+            }
+
+            const plateNums = (document.getElementById('inpPlateNums').value || '').trim();
+            const plateLetters = (document.getElementById('inpPlateLetters').value || '').trim();
+            const fullPlate = `${plateNums} ${plateLetters}`.trim() || 'بدون لوحة';
+            const truckType = document.getElementById('inpTruckType').value;
+            const client = (document.getElementById('inpClientName').value || 'عميل نقدي').trim();
+            const material = document.getElementById('inpMaterial').value;
+            const driver = (document.getElementById('inpDriverName').value || 'غير مسجل').trim();
+            const phone = (document.getElementById('inpDriverPhone').value || '').trim();
+            const direction = document.getElementById('inpDirection').value;
+            const pricePerTon = parseFloat(document.getElementById('inpPricePerTon').value) || 0;
+            const scaleFee = parseFloat(document.getElementById('inpScaleFee').value) || 0;
+            const notes = (document.getElementById('inpNotes').value || 'وزن معتمد سليم').trim();
+
+            playScaleBeep(980, 0.15);
+
+            if (currentWeighingMode === 'twoStage') {
+                // Record 1st Weight into Pending List
+                const newPending = {
+                    id: 'P-' + Math.floor(100 + Math.random() * 900),
+                    plate: fullPlate,
+                    truckType,
+                    client,
+                    driver,
+                    phone,
+                    material,
+                    direction,
+                    firstWeightKG: currentWeightKG,
+                    firstTime: getFormattedTimeNow(),
+                    pricePerTon,
+                    scaleFee,
+                    notes
+                };
+                pendingTickets.unshift(newPending);
+                persistAllData();
+                renderPendingTrucks();
+                updateKPIs();
+                showToast(`✅ تم تسجيل الوزنة الأولى للسيارة (${fullPlate}) بوزن ${currentWeightKG.toLocaleString()} كجم`);
+            } else {
+                // Direct Single-Pass Complete Ticket
+                const inputTare = parseFloat(document.getElementById('inpDirectTareKG').value) || 0;
+                const discountKG = parseFloat(document.getElementById('inpDirectDiscountKG').value) || 0;
+                const grossKG = Math.max(currentWeightKG, inputTare);
+                const tareKG = Math.min(currentWeightKG, inputTare);
+                const netKG = Math.max(0, grossKG - tareKG - discountKG);
+                const goodsValue = Math.round((netKG / 1000) * pricePerTon);
+
+                const newTicket = {
+                    serial: 'WB-' + (2040 + completedTickets.length + 1),
+                    date: getFormattedDateToday(),
+                    plate: fullPlate,
+                    truckType,
+                    client,
+                    driver,
+                    phone,
+                    material,
+                    direction,
+                    grossKG,
+                    tareKG,
+                    discountKG,
+                    netKG,
+                    grossTime: getFormattedTimeNow(),
+                    tareTime: 'معلوم مسبقاً',
+                    pricePerTon,
+                    scaleFee,
+                    goodsValue,
+                    notes
+                };
+
+                completedTickets.unshift(newTicket);
+                persistAllData();
+                renderRecentTicketsStrip();
+                renderArchiveTable();
+                updateKPIs();
+                openTicketModal(newTicket.serial);
+                showToast(`🎉 تم إصدار كارتة الميزان رقم ${newTicket.serial} بنجاح!`);
+            }
+        }
+
+        /********************************************************************
+         * 5. PENDING TRUCKS & SECOND WEIGHT COMPLETION
+         ********************************************************************/
+        function renderPendingTrucks() {
+            const listEl = document.getElementById('pendingTrucksList');
+            const badgeEl = document.getElementById('badgePendingCount');
+            badgeEl.textContent = pendingTickets.length;
+
+            if (pendingTickets.length === 0) {
+                listEl.innerHTML = `
+                    <div class="text-center py-6 text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl">
+                        لا توجد سيارات بالداخل قيد الانتظار حالياً
+                    </div>
+                `;
+                return;
+            }
+
+            listEl.innerHTML = pendingTickets.map(item => `
+                <div class="p-3 rounded-xl bg-slate-900/90 border border-slate-700/80 hover:border-amber-500/50 transition flex items-center justify-between gap-2">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="px-2 py-0.5 rounded bg-blue-600/30 border border-blue-400/40 text-white font-black text-xs">${item.plate}</span>
+                            <span class="text-xs font-bold text-slate-200">${item.client}</span>
+                        </div>
+                        <div class="text-[11px] text-slate-400 mt-1 flex flex-wrap items-center gap-2">
+                            <span><i class="fa-solid fa-box text-cyan-400 ml-1"></i>${item.material}</span>
+                            <span>•</span>
+                            <span class="text-amber-300 font-mono font-bold">وزنة 1: ${item.firstWeightKG.toLocaleString()} كجم (${item.firstTime})</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        <button onclick="startSecondWeightFor('${item.id}')" class="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition shadow-md">
+                            وزنة ثانية وتقفيل
+                        </button>
+                        <button onclick="deletePendingTicket('${item.id}')" class="p-2 rounded-xl bg-slate-800 hover:bg-rose-600 text-slate-400 hover:text-white text-xs transition" title="إلغاء">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function startSecondWeightFor(pendingId) {
+            switchMainTab('secondWeight');
+            populatePendingDropdown(pendingId);
+        }
+
+        function populatePendingDropdown(selectedId = null) {
+            const sel = document.getElementById('selPendingTicket');
+            if (pendingTickets.length === 0) {
+                sel.innerHTML = '<option value="">لا توجد سيارات قيد الانتظار</option>';
+                return;
+            }
+            sel.innerHTML = pendingTickets.map(p => `
+                <option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>
+                    السيارة [${p.plate}] - ${p.client} (وزنة أولى: ${p.firstWeightKG.toLocaleString()} كجم)
+                </option>
+            `).join('');
+
+            const targetId = selectedId || pendingTickets[0].id;
+            loadPendingForSecondWeight(targetId);
+        }
+
+        function loadPendingForSecondWeight(pendingId) {
+            const p = pendingTickets.find(item => item.id === pendingId);
+            if (!p) return;
+
+            document.getElementById('swFirstTime').textContent = p.firstTime;
+            document.getElementById('swFirstWeightKG').textContent = p.firstWeightKG.toLocaleString();
+            document.getElementById('swPlate').textContent = p.plate;
+            document.getElementById('swClient').textContent = p.client;
+            document.getElementById('swMaterial').textContent = p.material;
+            document.getElementById('swDiscountKG').value = 0;
+            document.getElementById('swDiscountPercent').value = 0;
+
+            // If current weight is identical to 1st weight, simulate realistic opposite weight for convenience
+            if (Math.abs(currentWeightKG - p.firstWeightKG) < 300) {
+                if (p.firstWeightKG > 22000) {
+                    simulateTruckArrival(14450); // Unloaded empty truck
+                } else {
+                    simulateTruckArrival(48600); // Loaded heavy truck
+                }
+            } else {
+                recalcSecondWeightSummary();
+            }
+        }
+
+        function applyPercentDiscount() {
+            const selId = document.getElementById('selPendingTicket').value;
+            const p = pendingTickets.find(item => item.id === selId);
+            if (!p) return;
+
+            const pct = parseFloat(document.getElementById('swDiscountPercent').value) || 0;
+            const rawDiff = Math.abs(currentWeightKG - p.firstWeightKG);
+            const discKG = Math.round(rawDiff * (pct / 100));
+            document.getElementById('swDiscountKG').value = discKG;
+            recalcSecondWeightSummary();
+        }
+
+        function recalcSecondWeightSummary() {
+            const selEl = document.getElementById('selPendingTicket');
+            if (!selEl) return;
+            const p = pendingTickets.find(item => item.id === selEl.value);
+            if (!p) return;
+
+            const w1 = p.firstWeightKG;
+            const w2 = currentWeightKG;
+            const gross = Math.max(w1, w2);
+            const tare = Math.min(w1, w2);
+            const discount = parseFloat(document.getElementById('swDiscountKG').value) || 0;
+            const net = Math.max(0, gross - tare - discount);
+            const goodsVal = Math.round((net / 1000) * (p.pricePerTon || 0));
+
+            document.getElementById('swSecondWeightKG').textContent = w2.toLocaleString();
+            document.getElementById('swGrossKG').textContent = gross.toLocaleString();
+            document.getElementById('swTareKG').textContent = tare.toLocaleString();
+            document.getElementById('swNetWeightKG').textContent = net.toLocaleString();
+            document.getElementById('swNetTons').textContent = `${(net / 1000).toFixed(3)} طن`;
+            document.getElementById('swGoodsValue').textContent = goodsVal.toLocaleString();
+        }
+
+        function completeSecondWeightTicket() {
+            const selId = document.getElementById('selPendingTicket').value;
+            const pIndex = pendingTickets.findIndex(item => item.id === selId);
+            if (pIndex === -1) {
+                showToast('يرجى اختيار سيارة من قائمة الانتظار أولاً');
+                return;
+            }
+
+            const p = pendingTickets[pIndex];
+            const w1 = p.firstWeightKG;
+            const w2 = currentWeightKG;
+            const grossKG = Math.max(w1, w2);
+            const tareKG = Math.min(w1, w2);
+            const discountKG = parseFloat(document.getElementById('swDiscountKG').value) || 0;
+            const netKG = Math.max(0, grossKG - tareKG - discountKG);
+            const nowTime = getFormattedTimeNow();
+
+            const newTicket = {
+                serial: 'WB-' + (2040 + completedTickets.length + 1),
+                date: getFormattedDateToday(),
+                plate: p.plate,
+                truckType: p.truckType,
+                client: p.client,
+                driver: p.driver,
+                phone: p.phone,
+                material: p.material,
+                direction: p.direction,
+                grossKG,
+                tareKG,
+                discountKG,
+                netKG,
+                grossTime: w1 >= w2 ? p.firstTime : nowTime,
+                tareTime: w1 < w2 ? p.firstTime : nowTime,
+                pricePerTon: p.pricePerTon,
+                scaleFee: p.scaleFee,
+                goodsValue: Math.round((netKG / 1000) * (p.pricePerTon || 0)),
+                notes: p.notes
+            };
+
+            // Remove from pending & add to completed
+            pendingTickets.splice(pIndex, 1);
+            completedTickets.unshift(newTicket);
+            persistAllData();
+
+            playScaleBeep(1120, 0.2);
+            renderPendingTrucks();
+            renderRecentTicketsStrip();
+            renderArchiveTable();
+            updateKPIs();
+            switchMainTab('firstWeight');
+            openTicketModal(newTicket.serial);
+            showToast(`✅ تم تقفيل الوزنة الثانية وإصدار الكارتة ${newTicket.serial} بنجاح!`);
+        }
+
+        function deletePendingTicket(id) {
+            pendingTickets = pendingTickets.filter(p => p.id !== id);
+            persistAllData();
+            renderPendingTrucks();
+            updateKPIs();
+            showToast('تم حذف السيارة من قائمة الانتظار');
+        }
+
+        /********************************************************************
+         * 6. ARCHIVE TABLE, RECENT TICKETS STRIP & OFFICIAL TICKET MODAL
+         ********************************************************************/
+        function renderRecentTicketsStrip() {
+            const container = document.getElementById('recentTicketsStrip');
+            const latest = completedTickets.slice(0, 4);
+            container.innerHTML = latest.map(t => `
+                <div onclick="openTicketModal('${t.serial}')" class="cursor-pointer p-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 hover:border-emerald-500/50 transition flex flex-col justify-between gap-2">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono text-xs font-black text-emerald-400">#${t.serial}</span>
+                        <span class="px-2 py-0.5 rounded bg-slate-800 text-amber-300 font-bold text-xs">${t.plate}</span>
+                    </div>
+                    <div>
+                        <div class="text-xs font-extrabold text-white truncate">${t.client}</div>
+                        <div class="text-[11px] text-cyan-300">${t.material}</div>
+                    </div>
+                    <div class="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
+                        <span class="text-slate-400">الصافي:</span>
+                        <span class="font-mono font-black text-emerald-400">${t.netKG.toLocaleString()} كجم (${(t.netKG / 1000).toFixed(2)} طن)</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderArchiveTable() {
+            const tbody = document.getElementById('archiveTableBody');
+            const q = (document.getElementById('searchArchiveInput')?.value || '').trim().toLowerCase();
+            const matFilter = document.getElementById('filterMaterialSelect')?.value || 'ALL';
+
+            const filtered = completedTickets.filter(t => {
+                const matchesMat = matFilter === 'ALL' || t.material === matFilter;
+                const matchesSearch = !q ||
+                    t.serial.toLowerCase().includes(q) ||
+                    t.plate.toLowerCase().includes(q) ||
+                    t.client.toLowerCase().includes(q) ||
+                    t.material.toLowerCase().includes(q);
+                return matchesMat && matchesSearch;
+            });
+
+            tbody.innerHTML = filtered.map(t => `
+                <tr class="hover:bg-slate-900/80 transition">
+                    <td class="py-3 px-3 font-mono font-bold text-emerald-400">#${t.serial}</td>
+                    <td class="py-3 px-3 text-slate-300">${t.date} <span class="text-slate-500 text-[11px]">(${t.grossTime})</span></td>
+                    <td class="py-3 px-3"><span class="px-2 py-0.5 rounded bg-blue-600/20 border border-blue-500/30 font-bold text-white">${t.plate}</span></td>
+                    <td class="py-3 px-3 font-bold text-white">${t.client}<div class="text-[10px] text-slate-400">${t.direction}</div></td>
+                    <td class="py-3 px-3 text-cyan-300 font-semibold">${t.material}</td>
+                    <td class="py-3 px-3 text-center font-mono">${t.grossKG.toLocaleString()}</td>
+                    <td class="py-3 px-3 text-center font-mono">${t.tareKG.toLocaleString()}</td>
+                    <td class="py-3 px-3 text-center font-mono font-black text-emerald-400">${t.netKG.toLocaleString()} كجم <span class="block text-[10px] text-emerald-300">(${(t.netKG / 1000).toFixed(3)} طن)</span></td>
+                    <td class="py-3 px-3 text-center">
+                        <div class="flex items-center justify-center gap-1.5">
+                            <button onclick="openTicketModal('${t.serial}')" class="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-slate-950 font-bold transition">
+                                <i class="fa-solid fa-print ml-1"></i>طباعة
+                            </button>
+                            <button onclick="deleteCompletedTicket('${t.serial}')" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-rose-600 text-slate-400 hover:text-white transition">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function deleteCompletedTicket(serial) {
+            completedTickets = completedTickets.filter(t => t.serial !== serial);
+            persistAllData();
+            renderArchiveTable();
+            renderRecentTicketsStrip();
+            updateKPIs();
+            showToast('تم حذف الكارتة من السجل');
+        }
+
+        function openTicketModal(serial) {
+            const t = completedTickets.find(item => item.serial === serial);
+            if (!t) return;
+            activeViewingTicket = t;
+
+            document.getElementById('tktCompanyName').textContent = scaleConfig.name;
+            document.getElementById('tktCompanySub').textContent = scaleConfig.address;
+            document.getElementById('tktSerialNo').textContent = '#' + t.serial;
+            document.getElementById('tktPrintDate').textContent = `تاريخ الإصدار: ${t.date}`;
+
+            document.getElementById('tktPlate').textContent = t.plate;
+            document.getElementById('tktClient').textContent = t.client;
+            document.getElementById('tktMaterial').textContent = t.material;
+            document.getElementById('tktDriver').textContent = `${t.driver} (${t.phone || '-'})`;
+            document.getElementById('tktDirection').textContent = `${t.truckType} • ${t.direction}`;
+            document.getElementById('tktNotes').textContent = t.notes || '-';
+
+            document.getElementById('tktGrossTime').textContent = t.grossTime;
+            document.getElementById('tktGrossKG').textContent = `${t.grossKG.toLocaleString()} كجم`;
+            document.getElementById('tktGrossTons').textContent = `${(t.grossKG / 1000).toFixed(3)} طن`;
+
+            document.getElementById('tktTareTime').textContent = t.tareTime;
+            document.getElementById('tktTareKG').textContent = `${t.tareKG.toLocaleString()} كجم`;
+            document.getElementById('tktTareTons').textContent = `${(t.tareKG / 1000).toFixed(3)} طن`;
+
+            document.getElementById('tktDiscountKG').textContent = `${(t.discountKG || 0).toLocaleString()} كجم`;
+            document.getElementById('tktDiscountTons').textContent = `${((t.discountKG || 0) / 1000).toFixed(3)} طن`;
+
+            document.getElementById('tktNetKG').textContent = `${t.netKG.toLocaleString()} كجم`;
+            document.getElementById('tktNetTons').textContent = `${(t.netKG / 1000).toFixed(3)} طن`;
+
+            document.getElementById('tktScaleFee').textContent = `${(t.scaleFee || 0).toLocaleString()} ${scaleConfig.currency}`;
+            document.getElementById('tktGoodsValue').textContent = `${(t.goodsValue || 0).toLocaleString()} ${scaleConfig.currency}`;
+
+            drawVerificationMatrixCode(t.serial + '-' + t.netKG);
+
+            const modal = document.getElementById('ticketModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeTicketModal() {
+            const modal = document.getElementById('ticketModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function drawVerificationMatrixCode(seedStr) {
+            const c = document.getElementById('tktQrCanvas');
+            if (!c) return;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, 64, 64);
+            ctx.fillStyle = '#0f172a';
+
+            // Finder corners
+            ctx.fillRect(4, 4, 16, 16);
+            ctx.fillRect(44, 4, 16, 16);
+            ctx.fillRect(4, 44, 16, 16);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(7, 7, 10, 10);
+            ctx.fillRect(47, 7, 10, 10);
+            ctx.fillRect(7, 47, 10, 10);
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(9, 9, 6, 6);
+            ctx.fillRect(49, 9, 6, 6);
+            ctx.fillRect(9, 49, 6, 6);
+
+            let hash = 0;
+            for (let i = 0; i < seedStr.length; i++) {
+                hash = ((hash << 5) - hash) + seedStr.charCodeAt(i);
+            }
+            for (let x = 22; x < 42; x += 4) {
+                for (let y = 8; y < 56; y += 4) {
+                    if ((Math.abs(hash + x * y) % 3) !== 0) {
+                        ctx.fillRect(x, y, 3, 3);
+                    }
+                }
+            }
+        }
+
+        function shareTicketWhatsApp() {
+            if (!activeViewingTicket) return;
+            const t = activeViewingTicket;
+            let msg = `*شهادة وزن بسكول معتمدة* ⚖️🚛\n`;
+            msg += `*${scaleConfig.name}*\n`;
+            msg += `رقم الكارتة: *#${t.serial}* | التاريخ: ${t.date}\n`;
+            msg += `────────────────────\n`;
+            msg += `• رقم السيارة: *${t.plate}* (${t.truckType})\n`;
+            msg += `• العميل: *${t.client}*\n`;
+            msg += `• الصنف: *${t.material}*\n`;
+            msg += `• السائق: ${t.driver}\n`;
+            msg += `────────────────────\n`;
+            msg += `⚖️ *بيان الأوزان:*\n`;
+            msg += `• الوزن القائم: *${t.grossKG.toLocaleString()} كجم* (${t.grossTime})\n`;
+            msg += `• الوزن الفارغ: *${t.tareKG.toLocaleString()} كجم* (${t.tareTime})\n`;
+            if (t.discountKG > 0) {
+                msg += `• خصم عيار/شوائب: *${t.discountKG.toLocaleString()} كجم*\n`;
+            }
+            msg += `✅ *الوزن الصافي النهائي: ${t.netKG.toLocaleString()} كجم (${(t.netKG / 1000).toFixed(3)} طن)*\n`;
+            if (t.goodsValue > 0) {
+                msg += `💰 إجمالي قيمة الحمولة: *${t.goodsValue.toLocaleString()} ${scaleConfig.currency}*\n`;
+            }
+            window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+        }
+
+        /********************************************************************
+         * 7. KPI UPDATES, EXCEL EXPORT, BACKUP & SETTINGS
+         ********************************************************************/
+        function updateKPIs() {
+            document.getElementById('kpiPendingCount').textContent = pendingTickets.length;
+            document.getElementById('kpiCompletedCount').textContent = completedTickets.length;
+
+            const totalNetKG = completedTickets.reduce((sum, t) => sum + (t.netKG || 0), 0);
+            const totalScaleRev = completedTickets.reduce((sum, t) => sum + (t.scaleFee || 0), 0);
+
+            document.getElementById('kpiTotalTons').textContent = (totalNetKG / 1000).toFixed(2);
+            document.getElementById('kpiScaleRevenue').textContent = totalScaleRev.toLocaleString();
+
+            document.getElementById('hdrCompanyName').textContent = scaleConfig.name;
+            document.getElementById('hdrCompanyAddress').textContent = scaleConfig.address;
+            document.querySelectorAll('.curr-lbl').forEach(el => {
+                el.textContent = scaleConfig.currency;
+            });
+        }
+
+        function exportExcelCSV() {
+            const headers = ['رقم الكارتة', 'التاريخ', 'رقم السيارة', 'العميل', 'السائق', 'الصنف', 'الاتجاه', 'الوزن القائم (كجم)', 'الوزن الفارغ (كجم)', 'الخصم (كجم)', 'الوزن الصافي (كجم)', 'الصافي بالطن', 'رسوم الكارتة', 'قيمة البضاعة'];
+            const rows = completedTickets.map(t => [
+                t.serial,
+                t.date,
+                t.plate,
+                `"${t.client}"`,
+                `"${t.driver}"`,
+                `"${t.material}"`,
+                `"${t.direction}"`,
+                t.grossKG,
+                t.tareKG,
+                t.discountKG || 0,
+                t.netKG,
+                (t.netKG / 1000).toFixed(3),
+                t.scaleFee || 0,
+                t.goodsValue || 0
+            ]);
+
+            const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `تقرير-ميزان-البسكول-${getFormattedDateToday().replace(/\//g, '-')}.csv`;
+            a.click();
+            showToast('تم تحميل شيت الإكسيل (CSV) بنجاح!');
+        }
+
+        function exportBackupJSON() {
+            const data = { scaleConfig, pendingTickets, completedTickets };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `نسخة-احتياطية-بسكول-${ Date.now() }.json`;
+            a.click();
+            showToast('تم حفظ النسخة الاحتياطية بنجاح');
+        }
+
+        function importBackupJSON(evt) {
+            const file = evt.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    if (parsed.completedTickets) completedTickets = parsed.completedTickets;
+                    if (parsed.pendingTickets) pendingTickets = parsed.pendingTickets;
+                    if (parsed.scaleConfig) scaleConfig = parsed.scaleConfig;
+                    persistAllData();
+                    renderPendingTrucks();
+                    renderRecentTicketsStrip();
+                    renderArchiveTable();
+                    updateKPIs();
+                    showToast('تم استرجاع كافة البيانات بنجاح!');
+                } catch (err) {
+                    showToast('ملف النسخة الاحتياطية غير صالح');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function openSettingsModal() {
+            document.getElementById('cfgScaleName').value = scaleConfig.name;
+            document.getElementById('cfgScaleAddress').value = scaleConfig.address;
+            document.getElementById('cfgCurrency').value = scaleConfig.currency;
+            document.getElementById('cfgBaudRate').value = scaleConfig.baudRate;
+            const modal = document.getElementById('settingsModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeSettingsModal() {
+            const modal = document.getElementById('settingsModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function saveScaleSettings() {
+            scaleConfig.name = document.getElementById('cfgScaleName').value || 'ميزان بسكول';
+            scaleConfig.address = document.getElementById('cfgScaleAddress').value || '';
+            scaleConfig.currency = document.getElementById('cfgCurrency').value || 'ج.م';
+            scaleConfig.baudRate = parseInt(document.getElementById('cfgBaudRate').value, 10) || 9600;
+            try {
+                localStorage.setItem('wb_pro_config_v4', JSON.stringify(scaleConfig));
+            } catch (e) {}
+            closeSettingsModal();
+            updateKPIs();
+            showToast('تم حفظ إعدادات الميزان والشركة بنجاح');
+        }
+
+        function showToast(msg) {
+            const banner = document.getElementById('toastBanner');
+            banner.textContent = msg;
+            banner.classList.remove('opacity-0', 'translate-y-4');
+            setTimeout(() => {
+                banner.classList.add('opacity-0', 'translate-y-4');
+            }, 3000);
+        }
+
+        // Live Clock & Initialization
+        setInterval(() => {
+            const el = document.getElementById('liveClockDisplay');
+            if (el) el.textContent = new Date().toLocaleTimeString('en-GB');
+        }, 1000);
+
+        window.onload = function() {
+            updateIndicatorDisplay();
+            renderPendingTrucks();
+            renderRecentTicketsStrip();
+            renderArchiveTable();
+            updateKPIs();
+            updateDirectPreview();
+        };
+    </script>
+</body>
+</html>
